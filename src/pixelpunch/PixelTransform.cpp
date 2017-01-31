@@ -3,12 +3,12 @@
 #include "Kernel.h"
 #include "cinder/Matrix.h"
 #include <cassert>
+#include "CinderExtensions.h"
 
 using namespace cinder;
 using namespace pp;
 
-
-TransformMapping::TransformMapping(Vec2f* pts)
+TransformMapping::TransformMapping(vec2* pts)
 {
 	bounds.set(pts[0].x, pts[0].y, 0, 0);
 	
@@ -21,7 +21,7 @@ TransformMapping::TransformMapping(Vec2f* pts)
 		bounds.y2 = std::max(pts[i].y, bounds.y2);
 	}
 
-	Vec2f topLeft = bounds.getUpperLeft();
+	vec2 topLeft = bounds.getUpperLeft();
 	for(int i = 0; i < 4; i++)
 		localQuad[i] = pts[i] - topLeft;
 }
@@ -30,7 +30,7 @@ TransformMapping::TransformMapping(Vec2f* pts)
 TransformMapping::TransformMapping(const Rectf& rect)
 {
 	bounds = rect;
-	Vec2f topLeft = bounds.getUpperLeft();
+	vec2 topLeft = bounds.getUpperLeft();
 	//starting with TOPLEFT clockwise
 	localQuad[0] = bounds.getUpperLeft() - topLeft;
 	localQuad[1] = bounds.getUpperRight() - topLeft;
@@ -38,42 +38,64 @@ TransformMapping::TransformMapping(const Rectf& rect)
 	localQuad[3] = bounds.getLowerLeft() - topLeft;
 }
 
-Matrix33f _mapUnitSquareToQuad(ci::Vec2f* quad)
+mat3 _mapUnitSquareToQuad(ci::vec2* quad)
 {
-	Matrix33f result;
-	result.m02 = quad[0].x;
-	result.m12 = quad[0].y;
-	result.m22 = 1;
+	mat3 result;
+    
+//  result[0][2] = quad[0].x;
+//	result[1][2] = quad[0].y;
+//	result[2][2] = 1;
+    result[2][0] = quad[0].x;
+    result[2][1] = quad[0].y;
+    result[2][2] = 1;
 	
-	Vec2f p = quad[0] - quad[1] + quad[2] - quad[3];
+	vec2 p = quad[0] - quad[1] + quad[2] - quad[3];
 	if(p.x == 0 && p.y == 0)
 	{
 		//Affine
-		result.m00 = quad[1].x - quad[0].x;
-		result.m01 = quad[2].x - quad[1].x;
-		
-		result.m10 = quad[1].y - quad[0].y;
-		result.m11 = quad[2].y - quad[1].y;
-
-		result.m20 = 0;
-		result.m21 = 0;
+//		result[0][0] = quad[1].x - quad[0].x;
+//		result[0][1] = quad[2].x - quad[1].x;
+//		
+//		result[1][0] = quad[1].y - quad[0].y;
+//		result[1][1] = quad[2].y - quad[1].y;
+//
+//		result[2][0] = 0;
+//		result[2][1] = 0;
+        
+        result[0][0] = quad[1].x - quad[0].x;
+        result[1][0] = quad[2].x - quad[1].x;
+        
+        result[0][1] = quad[1].y - quad[0].y;
+        result[1][1] = quad[2].y - quad[1].y;
+        
+        result[0][2] = 0;
+        result[1][2] = 0;
 	}
 	else
 	{
 		//Projective
-		Vec2f d1 = quad[1] - quad[2];
-		Vec2f d2 = quad[3] - quad[2];
-		float del = d1.cross(d2);
+		vec2 d1 = quad[1] - quad[2];
+		vec2 d2 = quad[3] - quad[2];
+        float del = cross(vec3(d1,0), vec3(d2,0)).z;
 		assert(del != 0);
 
-		result.m20 = p.cross(d2) / del;
-		result.m21 = d1.cross(p) / del;
-	
-		result.m00 = quad[1].x - quad[0].x + result.m20 * quad[1].x;
-		result.m01 = quad[3].x - quad[0].x + result.m21 * quad[3].x;
-	
-		result.m10 = quad[1].y - quad[0].y + result.m20 * quad[1].y;
-		result.m11 = quad[3].y - quad[0].y + result.m21 * quad[3].y;
+//		result[2][0] = cross(vec3(p,0), vec3(d2,0)).z / del;
+//		result[2][1] = cross(vec3(d1,0), vec3(p,0)).z / del;
+//	
+//		result[0][0] = quad[1].x - quad[0].x + result[2][0] * quad[1].x;
+//		result[0][1] = quad[3].x - quad[0].x + result[2][1] * quad[3].x;
+//	
+//		result[1][0] = quad[1].y - quad[0].y + result[2][0] * quad[1].y;
+//		result[1][1] = quad[3].y - quad[0].y + result[2][1] * quad[3].y;
+        
+        result[0][2] = cross(vec3(p,0), vec3(d2,0)).z / del;
+        result[1][2] = cross(vec3(d1,0), vec3(p,0)).z / del;
+        
+        result[0][0] = quad[1].x - quad[0].x + result[0][2] * quad[1].x;
+        result[1][0] = quad[3].x - quad[0].x + result[1][2] * quad[3].x;
+        
+        result[0][1] = quad[1].y - quad[0].y + result[0][2] * quad[1].y;
+        result[1][1] = quad[3].y - quad[0].y + result[1][2] * quad[3].y;
 	}
 	return result;
 
@@ -83,10 +105,10 @@ template<class Sampler>
 void _drawProjective(Sampler& sampler, TransformMapping& srcMapping, Surface& dest, TransformMapping& destMapping)
 {
 	//calculate matrix mapping each pixel in target to a coordinate in source
-	Matrix33f uvToTarget = _mapUnitSquareToQuad(destMapping.localQuad);
-	Matrix33f targetToUV = uvToTarget.inverted();
-	Matrix33f uvToSource = _mapUnitSquareToQuad(srcMapping.localQuad);
-	Matrix33f targetToSource = uvToSource * targetToUV;
+	mat3 uvToTarget = _mapUnitSquareToQuad(destMapping.localQuad);
+	mat3 targetToUV = inverse(uvToTarget);
+	mat3 uvToSource = _mapUnitSquareToQuad(srcMapping.localQuad);
+	mat3 targetToSource = uvToSource * targetToUV;
 
 	//for each target pixel find one in source!
 	float srcWidth = sampler.source.getWidth();
@@ -95,16 +117,18 @@ void _drawProjective(Sampler& sampler, TransformMapping& srcMapping, Surface& de
 	for(int x = 0; x < dest.getWidth(); x++)
 		for(int y = 0; y < dest.getHeight(); y++)
 		{
-			Vec3f vSrc = targetToSource.transformVec(Vec3f(x,y,1));
-			vSrc /= vSrc.z;
+            VecExt<float> vecExt;
+			vec3 vSrc = vecExt.transformVec(targetToSource, vec3(x,y,1));
+ 
+            vSrc /= vSrc.z;
 			if(vSrc.x >= 0 && vSrc.y >= 0 && vSrc.x < srcWidth && vSrc.y < srcHeight)
-				dest.setPixel(Vec2i(x,y), sampler(vSrc.x, vSrc.y) );
+				dest.setPixel(ivec2(x,y), sampler(vSrc.x, vSrc.y) );
 			else
-				dest.setPixel(Vec2i(x,y), blank);
+				dest.setPixel(ivec2(x,y), blank);
 		}
 }
 
-Vec2f _transformInvBilinear(Vec2f p, Vec2f* q)
+vec2 _transformInvBilinear(vec2 p, vec2* q)
 {	
 	//non-inverse is easy: 
 	//p = (1-u)*(1-v)*q[0] + (1-u)*v*q[3] + u*(1-v)*q[1] + u*v*q[2]
@@ -114,9 +138,9 @@ Vec2f _transformInvBilinear(Vec2f p, Vec2f* q)
 
 	//A*(1-u)^2 + B*2u(1-u) + C*u^2 = 0
 	
-	double A = (q[0]-p).cross(q[0]-q[3]);
-	double B = ((q[0]-p).cross(q[1]-q[2]) + (q[1]-p).cross(q[0]-q[3]) ) / 2;
-	double C = (q[1]-p).cross(q[1]-q[2]);
+	double A = cross(vec3(q[0]-p,0), vec3(q[0]-q[3],0)).z;
+	double B = (cross(vec3(q[0]-p,0), vec3(q[1]-q[2],0)).z + cross(vec3(q[1]-p,0), vec3(q[0]-q[3],0)).z ) / 2;
+	double C = cross(vec3(q[1]-p,0), vec3(q[1]-q[2],0)).z;
 
 	//FIND U
 	double u = 0;
@@ -132,19 +156,19 @@ Vec2f _transformInvBilinear(Vec2f p, Vec2f* q)
 
 	//FIND V
 	double v = 0;
-	Vec2f vDiv = (1-u)*(q[0]-q[3]) + u*(q[1]-q[2]);
-	if(abs(vDiv.x) > abs(vDiv.y))
+	vec2 vDiv = (float)(1-u) * (vec2(q[0]-q[3])) + (float)u*(vec2(q[1]-q[2]));
+	if(fabs(vDiv.x) > fabs(vDiv.y))
 		v = ( (1-u)*(q[0].x-p.x) + u*(q[1].x-p.x) ) / vDiv.x;
 	else if(vDiv.y != 0)
 		v = ( (1-u)*(q[0].y-p.y) + u*(q[1].y-p.y) ) / vDiv.y;
 	
-	return Vec2f((float)u,(float)v);
+	return vec2(u,v);
 }
 
 template<class Sampler>
 void _drawBilinear(Sampler& sampler, TransformMapping& srcMapping, Surface& dest, TransformMapping& destMapping)
 {
-	Matrix33f uvToSource = _mapUnitSquareToQuad(srcMapping.localQuad);
+	mat3 uvToSource = _mapUnitSquareToQuad(srcMapping.localQuad);
 
 	//for each target pixel find one in source!
 	float srcWidth = sampler.source.getWidth();
@@ -155,15 +179,16 @@ void _drawBilinear(Sampler& sampler, TransformMapping& srcMapping, Surface& dest
 		{
 			float u = (x+0.5) / (float)dest.getWidth();
 			float v = (y+0.5) / (float)dest.getHeight();
-			Vec2f uv = _transformInvBilinear(Vec2f(x,y), destMapping.localQuad);
+			vec2 uv = _transformInvBilinear(vec2(x,y), destMapping.localQuad);
 			if(u >= 0 && u <= 1 && v >= 0 && v <= 1)
 			{
-				Vec3f vSrc = uvToSource.transformVec(Vec3f(uv,1));
+                VecExt<float> vecExt;
+				vec3 vSrc = vecExt.transformVec(uvToSource, vec3(uv.x,uv.y,1));
 				vSrc /= vSrc.z;
 				if(vSrc.x >= 0 && vSrc.y >= 0 && vSrc.x < srcWidth && vSrc.y < srcHeight)
-					dest.setPixel(Vec2i(x,y), sampler(vSrc.x, vSrc.y) );
+					dest.setPixel(ivec2(x,y), sampler(vSrc.x, vSrc.y) );
 				else
-					dest.setPixel(Vec2i(x,y), blank);
+					dest.setPixel(ivec2(x,y), blank);
 			};
 		}	
 }
@@ -184,7 +209,9 @@ Surface pp::transform(Sampler& sampler, TransformMapping& targetMapping, Transfo
 	case TM_BILINEAR:
 		_drawBilinear(sampler, srcMapping, result, targetMapping);
 		break;
-	}	
+    default:
+        break;
+    }
 	return result;
 }
 
@@ -200,7 +227,7 @@ NearestNeighbourSampler::NearestNeighbourSampler(Surface& src)
 
 ColorA8u NearestNeighbourSampler::operator()(float x, float y)
 {
-	Vec2i srcPxl;
+	ivec2 srcPxl;
 	srcPxl.x = (int)(x + 0.5);
 	srcPxl.y = (int)(y + 0.5);
 	return source.getPixel(srcPxl);
@@ -225,10 +252,10 @@ ColorA8u BilinearSampler::operator()(float x, float y)
 	int y1 = floor(y);
 	int x2 = ceil(x);
 	int y2 = ceil(y);
-	ColorAf a = source.getPixel(Vec2i(x1, y1));
-	ColorAf b = source.getPixel(Vec2i(x2, y1));
-	ColorAf c = source.getPixel(Vec2i(x1, y2));
-	ColorAf d = source.getPixel(Vec2i(x2, y2));
+	ColorAf a = source.getPixel(ivec2(x1, y1));
+	ColorAf b = source.getPixel(ivec2(x2, y1));
+	ColorAf c = source.getPixel(ivec2(x1, y2));
+	ColorAf d = source.getPixel(ivec2(x2, y2));
 	float subx = x - x1;
 	float suby = y - y1;
 	return a*( (1-subx)	* (1-suby) )
@@ -270,7 +297,7 @@ ci::ColorA8u BicubicSampler::operator()(float x, float y)
 	for(int ox = 0; ox < 4; ox++)
 		for(int oy = 0; oy < 4; oy++)
 		{
-			ColorAf c = source.getPixel(Vec2i(x1+ox, y1+oy));
+			ColorAf c = source.getPixel(ivec2(x1+ox, y1+oy));
 			p[0][ox][oy] = c.r;
 			p[1][ox][oy] = c.g;
 			p[2][ox][oy] = c.b;
@@ -310,11 +337,11 @@ ColorA8u BilinearDominanceSampler::operator()(float x, float y)
 	float subx = x - x1;
 	float suby = y - y1;
 	//A
-	colors[i] = source.getPixel(Vec2i(x1, y1));
+	colors[i] = source.getPixel(ivec2(x1, y1));
 	weights[i] =  (1-subx)	* (1-suby);
 	i++;
 	//B
-	ColorA8u c = source.getPixel(Vec2i(x2, y1));
+	ColorA8u c = source.getPixel(ivec2(x2, y1));
 	for(k = 0; k < i; k++)
 		if(colors[k].r == c.r && colors[k].g == c.g && colors[k].b == c.b)
 		{
@@ -328,7 +355,7 @@ ColorA8u BilinearDominanceSampler::operator()(float x, float y)
 		i++;
 	}
 	//C
-	c = source.getPixel(Vec2i(x1, y2));
+	c = source.getPixel(ivec2(x1, y2));
 	for(k = 0; k < i; k++)
 		if(colors[k].r == c.r && colors[k].g == c.g && colors[k].b == c.b)
 		{
@@ -342,7 +369,7 @@ ColorA8u BilinearDominanceSampler::operator()(float x, float y)
 		i++;
 	}
 	//D
-	c = source.getPixel(Vec2i(x2, y2));
+	c = source.getPixel(ivec2(x2, y2));
 	for(k = 0; k < i; k++)
 		if(colors[k].r == c.r && colors[k].g == c.g && colors[k].b == c.b)
 		{
@@ -417,7 +444,7 @@ ci::ColorA8u BicubicBestFitSampler::operator()(float x, float y)
 	for(int ox = 0; ox < 4; ox++)
 		for(int oy = 0; oy < 4; oy++)
 		{
-			ColorAf c = source.getPixel(Vec2i(x1+ox, y1+oy));
+			ColorAf c = source.getPixel(ivec2(x1+ox, y1+oy));
 			p[0][ox][oy] = c.r;
 			p[1][ox][oy] = c.g;
 			p[2][ox][oy] = c.b;
@@ -437,7 +464,7 @@ ci::ColorA8u BicubicBestFitSampler::operator()(float x, float y)
 		ColorA8u pxl(255 * r, 255 * g, 255 * b);
 		for(Palette::iterator it = palette->begin(); it != palette->end(); it++)
 		{
-			float error = it->distanceSquared(pxl);
+            float error = distance2(ColorA8u(it->r,it->g,it->b), pxl);
 			if(error < best)//found
 			{
 				result = *it;
@@ -499,11 +526,11 @@ ColorA8u WeightSampler::operator()(float x, float y)
 	float subx = x - x1;
 	float suby = y - y1;
 	//A
-	colors[i] = source.getPixel(Vec2i(x1, y1));
+	colors[i] = source.getPixel(ivec2(x1, y1));
 	weights[i] =  (1-subx)	* (1-suby);
 	i++;
 	//B
-	ColorA8u c = source.getPixel(Vec2i(x2, y1));
+	ColorA8u c = source.getPixel(ivec2(x2, y1));
 	for(k = 0; k < i; k++)
 		if(colors[k].r == c.r && colors[k].g == c.g && colors[k].b == c.b)
 		{
@@ -517,7 +544,7 @@ ColorA8u WeightSampler::operator()(float x, float y)
 		i++;
 	}
 	//C
-	c = source.getPixel(Vec2i(x1, y2));
+	c = source.getPixel(ivec2(x1, y2));
 	for(k = 0; k < i; k++)
 		if(colors[k].r == c.r && colors[k].g == c.g && colors[k].b == c.b)
 		{
@@ -531,7 +558,7 @@ ColorA8u WeightSampler::operator()(float x, float y)
 		i++;
 	}
 	//D
-	c = source.getPixel(Vec2i(x2, y2));
+	c = source.getPixel(ivec2(x2, y2));
 	for(k = 0; k < i; k++)
 		if(colors[k].r == c.r && colors[k].g == c.g && colors[k].b == c.b)
 		{
@@ -552,13 +579,13 @@ ColorA8u WeightSampler::operator()(float x, float y)
 		return ColorA8u(255,0,0);
 
 
-	//make sure that 
-	int max = 0;
+	//make sure that
+    int max = 0;
 	int a = -1;
 	while(true)
 	{
 		//assume [a] is max
-		int max = ++a;
+        int max = ++a;
 		//find the real max
 		for(k = max + 1; k < i; k++)
 			if(weights[k] > weights[max])

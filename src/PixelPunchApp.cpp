@@ -1,4 +1,5 @@
-#include "cinder/app/AppBasic.h"
+#include "cinder/app/App.h"
+#include "cinder/app/RendererGl.h"
 #include "cinder/Rand.h"
 #include "cinder/Surface.h"
 #include "cinder/gl/Texture.h"
@@ -17,9 +18,9 @@ using namespace mowa::sgui;
 
 #include "TransformUI.h"
 
-#include "pixelpunch\PixelPunch.h"
-#include "pixelpunch\PixelScale.h"
-#include "pixelpunch\PixelTransform.h"
+#include "pixelpunch/PixelPunch.h"
+#include "pixelpunch/PixelScale.h"
+#include "pixelpunch/PixelTransform.h"
 
 #include <boost/format.hpp>
 
@@ -27,7 +28,7 @@ void staticMouseDownHandler( MouseEvent event );
 void staticMouseUpHandler( MouseEvent event );
 
 // We'll create a new Cinder Application by deriving from the BasicApp class
-class PixelPunchApp : public AppBasic {
+class PixelPunchApp : public App {
 public:
 	void fileDrop( FileDropEvent event );
 	// Cinder will always call this function whenever the user drags the mouse
@@ -84,9 +85,9 @@ private:
 	std::string				mSourceFileName;
 	Surface					mSourceImage;
 	Surface					mScaledSrc;
-	gl::Texture				mPrevTexture;
+	gl::TextureRef             mPrevTexture;
 	Surface					mResultImage;
-	gl::Texture				mResultTexture;
+	gl::TextureRef             mResultTexture;
 };
 
 
@@ -174,11 +175,11 @@ void PixelPunchApp::fileDrop( FileDropEvent event)
 {
 	mSourceFileName = event.getFile( 0 ).string();
 	mSourceImage = loadImage(mSourceFileName);
-	mPrevTexture = gl::Texture( mSourceImage );
-	mPrevTexture.setMagFilter(GL_NEAREST);
+    mPrevTexture = gl::Texture::create( mSourceImage );
+	mPrevTexture->setMagFilter(GL_NEAREST);
 	mResultImage = Surface();
 	mScaledSrc = Surface();
-
+    
 	mTransformUI.setShape(cinder::Rectf(0,0,(float)mSourceImage.getWidth(),(float)mSourceImage.getHeight()));
 	mTransformUI.center();
 
@@ -187,7 +188,7 @@ void PixelPunchApp::fileDrop( FileDropEvent event)
 
 void PixelPunchApp::validateResultImage()
 {
-	bool isValid = (mResultImage != NULL);
+	bool isValid = (mResultImage.getData() != NULL);
 
 	//ScaleMethod changed?
 	pp::ScaleMethod newScaleMethod = mScaleMethod;
@@ -215,7 +216,7 @@ void PixelPunchApp::validateResultImage()
 	isValid = isValid && (mPrevMixThreshold == mMixThreshold);
 	isValid = isValid && (mPrevDiffWithSmoothBicubic == mDiffWithSmoothBicubic);
 
-	if(mSourceImage && !isValid)
+	if(mSourceImage.getData() && !isValid)
 	{
 		mPrevMixThreshold = mMixThreshold;
 		mPrevDiffWithSmoothBicubic = mDiffWithSmoothBicubic;
@@ -225,7 +226,7 @@ void PixelPunchApp::validateResultImage()
 			mPrevTexture = mResultTexture;
 
 		//UPSCALE SOURCE
-		if(newScaleMethod != mScaleMethod || !mScaledSrc)
+		if(newScaleMethod != mScaleMethod || !mScaledSrc.getData())
 		{
 			mScaleMethod = newScaleMethod;
 			mScaledSrc = pp::scale(mSourceImage, mScaleMethod);
@@ -233,6 +234,7 @@ void PixelPunchApp::validateResultImage()
 
 		//TRANSFORM
 		mTransformMethod = newTransformMethod;
+
 		if(mTransformMethod == pp::TM_IDENTITY)
 		{
 			mResultImage = mScaledSrc;
@@ -243,55 +245,95 @@ void PixelPunchApp::validateResultImage()
 			//SAMPLING
 			mSamplingMethod = newSamplingMethod;
 			pp::Palette colors;
+            
 			switch(mSamplingMethod)
 			{
 				case pp::SAMPLE_NEAREST:
-					mResultImage = pp::transform(pp::NearestNeighbourSampler(mScaledSrc), tfx, mTransformMethod);
+                {
+                    pp::NearestNeighbourSampler NNS = pp::NearestNeighbourSampler(mScaledSrc);
+					mResultImage = pp::transform(NNS, tfx, mTransformMethod);
 					break;
+                }
 				case pp::SAMPLE_BILINEAR:
-					mResultImage = pp::transform(pp::BilinearSampler(mScaledSrc), tfx, mTransformMethod);
+                {
+                    pp::BilinearSampler BS = pp::BilinearSampler(mScaledSrc);
+					mResultImage = pp::transform(BS, tfx, mTransformMethod);
 					break;
-				case pp::SAMPLE_BICUBIC:
-					mResultImage = pp::transform(pp::BicubicSampler(mScaledSrc), tfx, mTransformMethod);
+                }
+                case pp::SAMPLE_BICUBIC:
+                {
+                    pp::BicubicSampler BCS = pp::BicubicSampler(mScaledSrc);
+					mResultImage = pp::transform(BCS, tfx, mTransformMethod);
 					break;
+                }
 				case pp::SAMPLE_FIRST_BILINEAR:
-					mResultImage = pp::transform(pp::BilinearDominanceSampler(mScaledSrc, 0), tfx, mTransformMethod);
+                {
+                    pp::BilinearDominanceSampler BDSF = pp::BilinearDominanceSampler(mScaledSrc, 0);
+					mResultImage = pp::transform(BDSF, tfx, mTransformMethod);
 					break;
+                }
 				case pp::SAMPLE_SECOND_BILINEAR:
-					mResultImage = pp::transform(pp::BilinearDominanceSampler(mScaledSrc, 1), tfx, mTransformMethod);
+                {
+                    pp::BilinearDominanceSampler BDSS = pp::BilinearDominanceSampler(mScaledSrc, 1);
+					mResultImage = pp::transform(BDSS, tfx, mTransformMethod);
 					break;
+                }
 				case pp::SAMPLE_BEST_FIT_NARROW:
-					mResultImage = pp::transform(pp::BicubicBestFitSampler(mScaledSrc, false), tfx, mTransformMethod);
+                {
+                    pp::BicubicBestFitSampler BSFS = pp::BicubicBestFitSampler(mScaledSrc, false);
+					mResultImage = pp::transform(BSFS, tfx, mTransformMethod);
 					break;
+                }
 				case pp::SAMPLE_BEST_FIT_WIDE:
-					mResultImage = pp::transform(pp::BicubicBestFitSampler(mScaledSrc, true), tfx, mTransformMethod);
+                {
+                    pp::BicubicBestFitSampler BSFW = pp::BicubicBestFitSampler(mScaledSrc, true);
+					mResultImage = pp::transform(BSFW, tfx, mTransformMethod);
 					break;
-				case pp::SAMPLE_BEST_FIT_ANY:
-				    pp::getColors(mSourceImage, colors);
-					mResultImage = pp::transform(pp::BicubicBestFitSampler(mScaledSrc, colors), tfx, mTransformMethod);
+                }
+                case pp::SAMPLE_BEST_FIT_ANY:
+                {
+                    pp::getColors(mSourceImage, colors);
+                    pp::BicubicBestFitSampler BBFS = pp::BicubicBestFitSampler(mScaledSrc, colors);
+					mResultImage = pp::transform(BBFS, tfx, mTransformMethod);
 					break;
+                }
 				case pp::SAMPLE_FIRST_WEIGHT:
-					mResultImage = pp::transform(pp::WeightSampler(mScaledSrc, 0), tfx, mTransformMethod);
+                {
+                    pp::WeightSampler WSF = pp::WeightSampler(mScaledSrc, 0);
+					mResultImage = pp::transform(WSF, tfx, mTransformMethod);
 					break;
+                }
 				case pp::SAMPLE_SECOND_WEIGHT:
-					mResultImage = pp::transform(pp::WeightSampler(mScaledSrc, 1), tfx, mTransformMethod);
+                {
+                    pp::WeightSampler WSS = pp::WeightSampler(mScaledSrc, 1);
+					mResultImage = pp::transform(WSS, tfx, mTransformMethod);
 					break;
+                }
 				case pp::SAMPLE_MINIMIZE_ERROR:
-					Surface bicubic = pp::transform(pp::BicubicSampler(mScaledSrc), tfx, mTransformMethod);
-					Surface first = pp::transform(pp::BilinearDominanceSampler(mScaledSrc, 0), tfx, mTransformMethod);
-					Surface second = pp::transform(pp::BilinearDominanceSampler(mScaledSrc, 1), tfx, mTransformMethod);
-					Surface secondWeight = pp::transform(pp::WeightSampler(mScaledSrc, 1), tfx, mTransformMethod);
-					mResultImage = pp::choose(first, second, pp::compare(bicubic, first), secondWeight, mMixThreshold*mMixThreshold);
+                {
+                    
+                    pp::BicubicSampler BCS = pp::BicubicSampler(mScaledSrc);
+                    pp::BilinearDominanceSampler BDSF = pp::BilinearDominanceSampler(mScaledSrc, 0);
+                    pp::BilinearDominanceSampler BDSS = pp::BilinearDominanceSampler(mScaledSrc, 1);
+                    pp::WeightSampler WSF = pp::WeightSampler(mScaledSrc, 0);
+					Surface bicubic = pp::transform(BCS, tfx, mTransformMethod);
+					Surface first = pp::transform(BDSF, tfx, mTransformMethod);
+					Surface second = pp::transform(BDSS, tfx, mTransformMethod);
+					Surface secondWeight = pp::transform(WSF, tfx, mTransformMethod);
+                    Surface compare = pp::compare(bicubic, first);
+					mResultImage = pp::choose(first, second, compare, secondWeight, mMixThreshold*mMixThreshold);
+                }
 			}
 			if(mDiffWithSmoothBicubic)
 			{
-				Surface bicubic = pp::transform(pp::BicubicSampler(mScaledSrc), tfx, mTransformMethod);
+                pp::BicubicSampler BCS = pp::BicubicSampler(mScaledSrc);
+				Surface bicubic = pp::transform(BCS, tfx, mTransformMethod);
 				mResultImage = pp::compare(bicubic, mResultImage);
 			}
 
 		}
-		mResultTexture = gl::Texture( mResultImage );
-		mResultTexture.setMagFilter(GL_NEAREST);
+        mResultTexture = gl::Texture::create( mResultImage );
+		mResultTexture->setMagFilter(GL_NEAREST);
 		
 		//PRINT TIME TAKEN
 		double t2 = getElapsedSeconds();
@@ -345,31 +387,31 @@ void PixelPunchApp::update()
 
 void PixelPunchApp::draw()
 {
-	Vec2f windowSize = getWindowSize();
+	vec2 windowSize = getWindowSize();
 	gl::setMatricesWindow( windowSize );
 	gl::clear( Color( 0.1f, 0.1f, 0.1f ) );
-	glColor3f( 1.0f, 1.0f, 1.0f );
+    gl::color( 1.0f, 1.0f, 1.0f );
 
 	//scaledSrc
-	gl::Texture& tex = mDisplaySource ? mPrevTexture : mResultTexture;		
+	gl::TextureRef& tex = mDisplaySource ? mPrevTexture : mResultTexture;
 	if(mTransformMethod == pp::TransformMethod::TM_IDENTITY && tex)
 	{
 		gl::pushMatrices();
-		float ratio = (float)mSourceImage.getWidth() / (float)tex.getWidth();
+		float ratio = (float)mSourceImage.getWidth() / (float)tex->getWidth();
 		float scale = max<float>(1.0f, mViewScale * ratio);
-		gl::scale(Vec3f(scale,scale,scale));
-		Vec2f pos = 0.5f * (windowSize/scale - (Vec2f)tex.getSize());
+		gl::scale(vec3(scale,scale,scale));
+		vec2 pos = 0.5f * (windowSize/scale - (vec2)tex->getSize());
 		
-		gl::draw(tex , pos);
+		gl::draw(tex, pos);
 		gl::popMatrices();
 	}
 	else //mTransformMethod != pp::TransformMethod::TM_IDENTITY)
 	{
-		if(tex && mResultImage)
+		if(tex && mResultImage.getData())
 		{
-			gl::pushMatrices();
-			gl::multModelView(mTransformUI.getShapeToView().m);
-			gl::draw(tex, tex.getBounds(), mTransformUI.getBounds());
+            gl::pushMatrices();
+            gl::multModelMatrix(mTransformUI.getShapeToView());
+			gl::draw(tex, tex->getBounds(), mTransformUI.getBounds());
 			gl::popMatrices();
 		}
 		gl::disableDepthRead();
@@ -386,7 +428,7 @@ void PixelPunchApp::draw()
 
 void PixelPunchApp::saveResultToFile()
 {
-	if(mResultImage)
+	if(mResultImage.getData() != NULL)
 	{
 		std::vector<std::string> extensions = ImageIo::getWriteExtensions();
 		std::string suffix = mScaleOptions[mScaleMethod];
@@ -401,4 +443,4 @@ void PixelPunchApp::saveResultToFile()
 
 
 // This line tells Flint to actually create the application
-CINDER_APP_BASIC( PixelPunchApp, RendererGl )
+CINDER_APP( PixelPunchApp, RendererGl );

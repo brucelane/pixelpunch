@@ -4,11 +4,12 @@
 #include "cinder/Surface.h"
 #include <list>
 
-namespace pp 
+namespace pp
 {
 	const float EPSILON = 0.01f;
 
 	typedef std::list<cinder::Color8u> Palette;
+
 
 	void genDest(cinder::Surface& source, int scaleFactor, cinder::Surface& result);
 	void getColors(cinder::Surface& source, Palette& result);

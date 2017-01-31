@@ -1,6 +1,7 @@
 #include "PixelPunch.h"
 #include "Kernel.h"
 #include <cassert>
+#include "CinderExtensions.h"
 
 using namespace cinder;
 
@@ -15,7 +16,7 @@ void pp::genDest(Surface& source, int scaleFactor, Surface& result)
 void pp::getColors(cinder::Surface& source, Palette& result)
 {
 	result.clear();
-	Vec2i v(0,0);
+	ivec2 v(0,0);
 	int width = source.getWidth();
 	int height = source.getHeight();
 	for(v.x = 0; v.x < width; v.x++)
@@ -24,7 +25,7 @@ void pp::getColors(cinder::Surface& source, Palette& result)
 			Color8u pxl = source.getPixel(v);
 			bool found = false;
 			for(Palette::iterator it = result.begin(); it != result.end(); it++)
-				if(it->distanceSquared(pxl) == 0)//found
+                if(distance2(Color8u(it->r,it->g,it->b), pxl) == 0)//found
 					found = true;
 			if(!found)
 				result.push_back(pxl);
@@ -39,7 +40,7 @@ Surface pp::compare(Surface& imageA, Surface& imageB)
 	
 	float kernel[3][3] = {{0.0625,0.125,0.0625},{0.125,0.25,0.125},{0.0625,0.125,0.0625}};
 	Surface result(width, height, false);
-	Vec2i v(0,0);
+	ivec2 v(0,0);
 	for(v.x = 0; v.x < width; v.x++)
 		for(v.y = 0; v.y < height; v.y++)
 		{
@@ -47,7 +48,7 @@ Surface pp::compare(Surface& imageA, Surface& imageB)
 			for(int i = 0; i < 3; i++)
 				for(int j = 0; j < 3; j++)
 				{
-					Vec2i offset(i-1, j-1);
+					ivec2 offset(i-1, j-1);
 					Color8u a = imageA.getPixel(v+offset);
 					Color8u b = imageB.getPixel(v+offset);
 					for(int k = 0; k < 3; k++)
@@ -79,7 +80,7 @@ Surface pp::choose(cinder::Surface& imageA, cinder::Surface& imageB, cinder::Sur
 	float height = std::min(imageB.getHeight(),imageB.getHeight());
 	
 	Surface result(width, height, false);
-	Vec2i v(0,0);
+	ivec2 v(0,0);
 	for(v.y = 0; v.y < height; v.y++)
 		for(v.x = 0; v.x < width; v.x++)
 		{
@@ -95,7 +96,7 @@ Surface pp::choose(cinder::Surface& imageA, cinder::Surface& imageB, cinder::Sur
 					for(int j = 0; j < 3 && swap; j++)
 						if(i != 1 || j != 1)
 						{
-							Vec2i offset(i-1, j-1);
+							ivec2 offset(i-1, j-1);
 							Color8u eO = errorA.getPixel(v+offset);
 							float errOther = (eO.r-127)*(eO.r-127) + (eO.g-127)*(eO.g-127) + (eO.b-127)*(eO.b-127);
 							if(errOther >= errA)

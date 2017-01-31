@@ -10,8 +10,9 @@ class TransformUI
 public:
 	TransformUI(void);
 	~TransformUI(void);
-	void setView(ci::Vec2i windowSize, float scale);
+	void setView(ci::ivec2 windowSize, float scale);
 	void setShape(ci::Rectf rect);
+
 	
 	//inpute handlers return true if shape changed
 	bool mouseMove(ci::app::MouseEvent evt);
@@ -22,8 +23,8 @@ public:
 	void draw();
 	void center();
 	ci::Rectf getBounds();
-	ci::Matrix44f getShapeToView() { return mShapeToView; };
-	ci::Matrix44f getViewToShape() { return mViewToShape; };
+	ci::mat4 getShapeToView() { return mShapeToView; };
+	ci::mat4 getViewToShape() { return mViewToShape; };
 	
 	static const int NONE = -1;
 	static const int TOP_LEFT = 0;
@@ -36,32 +37,35 @@ public:
 	static const int BOTTOM = 2;
 	static const int LEFT = 3;
 
-	ci::Vec2f shape[4];
+	ci::vec2 shape[4];
 	
 private:
 	void updateMatrix();
-	ci::Vec2f rotatePoint(const ci::Vec2f& point, const ci::Vec2f& rotBase, float angleRadian);
+	ci::vec2 rotatePoint(const ci::vec2& point, const ci::vec2& rotBase, float angleRadian);
 	void drawRotationCone();
-	float getAngle(const ci::Vec2f& v1, const ci::Vec2f& v2);
-	ci::Matrix44f mShapeToView;
-	ci::Matrix44f mViewToShape;
-	ci::Vec2f mShapeOffset;
-	ci::Vec2f mViewSize;
+	float getAngle(const ci::vec2& v1, const ci::vec2& v2);
+	ci::mat4 mShapeToView;
+	ci::mat4 mViewToShape;
+    ci::mat4 mRotShape;
+    ci::vec2 mRotDest;
+	ci::vec2 mShapeOffset;
+	ci::vec2 mViewSize;
 	float mViewScale;
 	bool mLeftMouseDown;
 	bool mRightMouseDown;
+    float angleDeg;
 	//dragging
 	int mDraggedCorner;
 	int mDraggedEdge;
-	ci::Vec2f mEdgeStartToMouse;
-	ci::Vec2f mMouseToEdgeEnd;
-	ci::Vec2f mMouseDragStart;
+	ci::vec2 mEdgeStartToMouse;
+	ci::vec2 mMouseToEdgeEnd;
+	ci::vec2 mMouseDragStart;
 	//rotation
 	bool mIsRotating;
-	ci::Vec2f mRotationStartDir;
-	ci::Vec2f mRotationCurrentDir;
+	ci::vec2 mRotationStartDir;
+	ci::vec2 mRotationCurrentDir;
 	float mRotationAngle;
-	ci::Vec2f mPreRotShape[4];
+	ci::vec2 mPreRotShape[4];
 	//config
 	float mHandleRadius;
 	float mRotationHandleLength;

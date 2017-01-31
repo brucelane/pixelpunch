@@ -1,6 +1,6 @@
 #include "TransformUI.h"
 #include "cinder/gl/gl.h"
-
+#include "CinderExtensions.h"
 using namespace ci;
 using namespace	cinder::app;
 
@@ -24,24 +24,24 @@ TransformUI::~TransformUI(void)
 
 void TransformUI::center()
 {
-	mShapeOffset.set(0,0);
+	mShapeOffset = vec2(0,0);
 	for(int i = 0; i < 4; i++)
-		mShapeOffset += shape[i];
+            mShapeOffset += shape[i];
 	mShapeOffset /= 4;
 	updateMatrix();
 }
 
 void TransformUI::updateMatrix()
 {
-	mShapeToView.setToIdentity();
-	mShapeToView.translate(Vec3f(0.5 * mViewSize));
-	mShapeToView.scale(Vec3f(mViewScale, mViewScale, 1.0f));
-	mShapeToView.translate(Vec3f(-mShapeOffset));
-
-	mViewToShape = mShapeToView.affineInverted();
+    mShapeToView = mat4(1); //Identity matrix
+    mShapeToView = translate(mShapeToView, vec3(0.5f * mViewSize,1.0f));
+    mShapeToView = scale(mShapeToView, vec3(mViewScale, mViewScale, 1.0f));
+	mShapeToView = translate(mShapeToView, vec3(-mShapeOffset,0.0f));
+    
+	mViewToShape = affineInverse(mShapeToView);
 }
 
-void TransformUI::setView(ci::Vec2i windowSize, float scale)
+void TransformUI::setView(ci::ivec2 windowSize, float scale)
 {
 	mViewSize = windowSize;
 	mViewScale = scale;
@@ -58,7 +58,7 @@ void TransformUI::setShape(ci::Rectf rect)
 
 ci::Rectf TransformUI::getBounds()
 {
-	Rectf result(shape[0], Vec2f());
+	Rectf result(shape[0],vec2());
 	for(int i = 0; i < 4; i++)
 	{
 		result.x1 = std::min(shape[i].x, result.x1);
@@ -72,8 +72,10 @@ ci::Rectf TransformUI::getBounds()
 
 bool TransformUI::mouseMove(MouseEvent evt)
 {
-	Vec2f pos = evt.getPos();
-	Vec2f posShape = mViewToShape.transformPoint(Vec3f(pos)).xy();
+    VecExt<float> vecExt;
+	vec2 pos = evt.getPos();
+    vec3 transformPoint = vecExt.transformPoint(mViewToShape, vec3(pos.x,pos.y,0));
+    vec2 posShape = vec2(transformPoint.x, transformPoint.y);
 	mDraggedCorner = NONE;
 	mDraggedEdge = NONE;
 	mLeftMouseDown = false;
@@ -81,7 +83,7 @@ bool TransformUI::mouseMove(MouseEvent evt)
 
 	//A handle to drag?
 	for(int i = 0; i < 4; i++)
-		if(shape[i].distance(posShape) < mHandleRadius)
+		if(distance(shape[i],posShape) < mHandleRadius)
 		{
 			mDraggedCorner = i;
 			return true;
@@ -89,12 +91,12 @@ bool TransformUI::mouseMove(MouseEvent evt)
 	//An edge to drag?
 	for(int i = 0; i < 4; i++)
 	{
-		Vec2f edgeDir = (shape[(i+1)%4] - shape[i]).normalized();
-		Vec2f cornerToMouse = posShape - shape[i];
-		Vec2f edgeToMouse = cornerToMouse - edgeDir * cornerToMouse.dot(edgeDir); 
-		if(edgeToMouse.length() < mHandleRadius)
+		vec2 edgeDir = normalize(shape[(i+1)%4] - shape[i]);
+		vec2 cornerToMouse = posShape - shape[i];
+		vec2 edgeToMouse = cornerToMouse - edgeDir * dot(cornerToMouse, edgeDir);
+		if(length(edgeToMouse) < mHandleRadius)
 		{
-			Vec2f posSnapped = posShape - edgeToMouse;
+			vec2 posSnapped = posShape - edgeToMouse;
 			mDraggedEdge = i;
 			mEdgeStartToMouse = posSnapped - shape[i];
 			mMouseToEdgeEnd = shape[(i+1)%4] - posSnapped;
@@ -124,8 +126,10 @@ bool TransformUI::mouseUp(MouseEvent evt)
 
 bool TransformUI::mouseDrag(MouseEvent evt)
 {
-	Vec2f pos = evt.getPos();
-	Vec2f posShape = mViewToShape.transformPoint(Vec3f(pos)).xy();
+    VecExt<float> vecExt;
+	vec2 pos = evt.getPos();
+    vec3 transformPoint =  vecExt.transformPoint(mViewToShape, vec3(pos.x,pos.y,0));
+    vec2 posShape = vec2(transformPoint.x, transformPoint.y);
 	if(mLeftMouseDown)
 	{
 		//DRAG EDGE
@@ -145,11 +149,11 @@ bool TransformUI::mouseDrag(MouseEvent evt)
 	//ROTATE SHAPE
 	if(mRightMouseDown)
 	{
-		Vec2f pos = evt.getPos();
+		vec2 pos = evt.getPos();
 		if(!mIsRotating)
 		{
 			mRotationStartDir = pos - mMouseDragStart;
-			if(mRotationStartDir.length() > mRotationHandleLength)
+			if(length(mRotationStartDir) > mRotationHandleLength)
 			{
 				mRotationAngle = 0;
 				mIsRotating = true;
@@ -159,51 +163,57 @@ bool TransformUI::mouseDrag(MouseEvent evt)
 		}
 		if(mIsRotating)
 		{
-			mRotationCurrentDir =  pos - mMouseDragStart;
+            VecExt<float> vecExt;
+			mRotationCurrentDir = pos - mMouseDragStart;
 			mRotationAngle = getAngle(mRotationStartDir, mRotationCurrentDir);
-			if(mRotationAngle > 0.1)
-				int foo = 0;
-			Vec3f rotBase = mViewToShape * Vec3f(mMouseDragStart,1);
-			for(int i = 0; i < 4; i++)
-				shape[i] = rotatePoint(mPreRotShape[i], rotBase.xy(), mRotationAngle);
-			return true;
+            if(mRotationAngle > 0.01){
+                vec4 transformed = mViewToShape * vec4(mMouseDragStart,1,0);
+                vec3 rotBase = vecExt.transformPoint(mViewToShape, vec3(mMouseDragStart,0));
+                for(int i = 0; i < 4; i++){
+                    vec2 rotatePoints = rotatePoint(mPreRotShape[i], vec2(rotBase), mRotationAngle);
+                    shape[i] = rotatePoints;
+                }
+            }
+            return true;
+        
 		}
 	}
 	return false;
 }
 
-float TransformUI::getAngle(const Vec2f& v1, const Vec2f& v2)
+float TransformUI::getAngle(const vec2& v1, const vec2& v2)
 {
-	float angle = acosf(v1.normalized().dot(v2.normalized()));
-	if(v2.cross(v1) > 0)
+	float angle = acosf(dot(normalize(v1), normalize(v2)));
+
+    if(cross(vec3(v2,0), vec3(v1,0)).z > 0.0f)
 		angle = 2 * M_PI - angle;
 	return angle;
 }
 
-Vec2f TransformUI::rotatePoint(const Vec2f& point, const Vec2f& rotBase, float angleRadian)
+vec2 TransformUI::rotatePoint(const vec2& point, const vec2& rotBase, float angleRadian)
 {
-	Vec2f v = point - rotBase;
-	v.rotate(angleRadian);
-	return rotBase + v;
+    vec2 v = point - rotBase;
+    v = rotate(v,angleRadian);
+    mRotDest = v;
+    return rotBase + v;
 }
 
 void TransformUI::draw()
 {
 	glLineWidth( 2.0f );
-	
 	gl::pushMatrices();
-	gl::multModelView(mShapeToView.m);
+    gl::multModelMatrix(mShapeToView);
 	for(int i = 0; i < 4; i++)
 	{
-		glColor3f( 0.4f, 0.4f, 0.4f );
+        gl::color( 0.4f, 0.4f, 0.4f );
 		//draw rect
 		if(mDraggedEdge == i)
-			glColor3f( 0.4f, 0.8f, 0.4f );
-		gl::drawLine(shape[i], shape[(i+1)%4]);		
+            gl::color( 0.4f, 0.8f, 0.4f );
+		gl::drawLine(shape[i], shape[(i+1)%4]);
 		//draw handles
-		glColor3f( 0.4f, 0.4f, 0.4f );
+        gl::color( 0.4f, 0.4f, 0.4f );
 		if(mDraggedCorner == i)
-			glColor3f( 0.4f, 0.8f, 0.4f );
+            gl::color( 0.4f, 0.8f, 0.4f );
 		gl::drawSolidCircle(shape[i], mHandleRadius/mViewScale, 30);
 	}
 	gl::popMatrices();
@@ -217,18 +227,18 @@ void TransformUI::drawRotationCone()
 	{
 		Path2d path;
 		path.moveTo(mMouseDragStart);
-		float startAngle = getAngle(Vec2f(1,0), mRotationStartDir);
+		float startAngle = getAngle(vec2(1,0), mRotationStartDir);
 		if(mRotationAngle < 0 || mRotationAngle > M_PI)
-			path.arc(mMouseDragStart, mRotationCurrentDir.length(), startAngle+mRotationAngle, startAngle);
+			path.arc(mMouseDragStart, length(mRotationCurrentDir), startAngle+mRotationAngle, startAngle);
 		else
-			path.arc(mMouseDragStart, mRotationCurrentDir.length(), startAngle, startAngle+mRotationAngle);
+			path.arc(mMouseDragStart, length(mRotationCurrentDir), startAngle, startAngle+mRotationAngle);
 		path.close();
 		
 		glEnable( GL_BLEND );
-		glBlendFunc( GL_SRC_ALPHA, GL_ONE );
-		glColor4f( 1.0f, 1.0f, 1.0f, 0.2f );
+		glBlendFunc( GL_SRC_ALPHA, GL_RGBA );
+        gl::color( 1.0f, 1.0f, 1.0f, 0.2f );
 		gl::drawSolid(path);
-		glColor3f( 0.4f, 0.8f, 0.4f );
+        gl::color( 0.4f, 0.8f, 0.4f );
 		gl::draw(path);
 		glDisable( GL_BLEND );
 	}

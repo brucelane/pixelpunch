@@ -15,9 +15,9 @@ namespace pp
 
 	struct TransformMapping
 	{
-		TransformMapping(cinder::Vec2f* pts);
+		TransformMapping(cinder::vec2* pts);
 		TransformMapping(const cinder::Rectf& rect);
-		ci::Vec2f localQuad[4]; //starting with TOPLEFT clockwise, local to bounds
+		ci::vec2 localQuad[4]; //starting with TOPLEFT clockwise, local to bounds
 		ci::Rectf bounds;
 	};
 
